@@ -1,0 +1,23 @@
+CREATE OR REPLACE FUNCTION public.show_people_2_3()
+  RETURNS TABLE(surname character varying, name character varying, characterization text) AS
+$BODY$
+BEGIN
+	RETURN QUERY(
+	(
+	SELECT "Student".surname, "Student".name,  'Student'
+	FROM "Student"
+	)
+	UNION
+	(
+	SELECT "Professor".surname ,"Professor".name , 'Professor'
+	FROM "Professor"
+	)
+	UNION
+	(
+	SELECT "Labstaff".surname ,"Labstaff".name, 'Labstaff'
+	FROM "Labstaff"
+	))
+	 ;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE

@@ -1,0 +1,115 @@
+CREATE TRIGGER courserun_assigned_labstaff_lab
+AFTER UPDATE ON "CourseRun"
+FOR EACH ROW 
+WHEN ((((NEW."Professor_amka1" is distinct from OLD."Professor_amka1" ) AND (NEW."Professor_amka1" is not null)) OR ((NEW."Professor_amka2" is distinct from OLD."Professor_amka2" ) AND (NEW."Professor_amka2" is not null)) )   )
+EXECUTE PROCEDURE process_courserun_assigned_labstaff_and_lab();
+
+CREATE OR REPLACE FUNCTION process_courserun_assigned_labstaff_and_lab() RETURNS TRIGGER AS $courserun_assigned_labstaff_lab$
+    BEGIN		
+				IF NEW."course_code" in (SELECT course_code FROM "Course" WHERE lab_hours > 0 ) THEN
+					  IF NEW."Lab" is not null AND NEW.serial_number IN (SELECT serial_number FROM "Supports") THEN RETURN NEW ; -- Assign the professor(s)
+					  ELSIF (NEW."Lab" is null)  AND NEW.serial_number IN (SELECT serial_number FROM "Supports") THEN RAISE EXCEPTION 'There is no assigned lab for this course run!' ;
+					  ELSIF (NEW."Lab" is not null)  AND NEW.serial_number NOT IN (SELECT serial_number FROM "Supports") THEN RAISE EXCEPTION 'There is no assigned labstaff for this course run!' ;
+					  ELSIF (NEW."Lab" is null)  AND NEW.serial_number NOT IN (SELECT serial_number FROM "Supports") THEN RAISE EXCEPTION 'There is no assigned labstaff or lab for this course run!' ;
+					  ELSE RETURN NULL ; 
+					  END IF;
+				ELSE RETURN NEW ;
+				END IF ;		
+		RETURN NULL ; 
+     END ; 
+     $courserun_assigned_labstaff_lab$ LANGUAGE 'plpgsql' ; 
+
+CREATE TRIGGER insert_prof_amkas
+BEFORE INSERT ON "CourseRun"
+FOR EACH ROW EXECUTE PROCEDURE process_insert_prof_amkas();
+
+CREATE OR REPLACE FUNCTION process_insert_prof_amkas() RETURNS TRIGGER AS $insert_prof_amkas$
+    BEGIN
+		
+			IF ((NEW."Professor_amka1" is not null) OR (NEW."Professor_amka2" is not null)) AND NEW."course_code" in (SELECT course_code FROM "Course" WHERE lab_hours > 0 ) THEN
+			      RAISE EXCEPTION 'The lesson has a lab and so the amkas of the teaching professors must be null before lab/labstaff assignment!' ; 
+			  ELSIF (NEW."Professor_amka1" is null) AND (NEW."Professor_amka2" is null) AND NEW."course_code" in (SELECT course_code FROM "Course" WHERE lab_hours = 0 ) THEN -- has not lab
+			      RAISE EXCEPTION 'The lesson does not have a lab and so there must be at least one teaching professor!' ; 
+			  ELSE RETURN NEW  ; 
+			  END IF;		
+		
+		RETURN NULL ; 
+     END ; 
+     $insert_prof_amkas$ LANGUAGE 'plpgsql' ; 
+
+
+CREATE TRIGGER courserun_rules
+BEFORE INSERT OR UPDATE ON "CourseRun"
+FOR EACH ROW EXECUTE PROCEDURE process_courserun_rules();
+
+CREATE OR REPLACE FUNCTION process_courserun_rules() RETURNS TRIGGER AS $courserun_rules$
+    BEGIN
+		IF (TG_OP = 'INSERT') THEN		
+			IF NEW."course_code" NOT IN (SELECT course_code FROM "Course" WHERE lab_hours > 0 ) THEN -- αν δεν είναι εργαστηριακό 
+				IF NEW.exam_min is not null OR NEW.lab_min is not null OR NEW.exam_percentage is not null OR NEW."Lab" is not null THEN
+					RAISE EXCEPTION 'The lesson does not have a lab (Lab must be null), so the grade rules are configured automatically and must be null!';
+				ELSE 
+					NEW.exam_min = 0 ;
+					NEW.lab_min = 0 ; 
+					NEW.exam_percentage = 100 ; 
+					RETURN NEW ;				
+				END IF ;
+			ELSE -- είναι εργαστηριακό 
+				IF NEW.exam_min is null OR NEW.lab_min is null OR NEW.exam_percentage is null THEN
+					RAISE EXCEPTION 'The lesson has a lab, so all the grade rules must be assigned!';
+				ELSE RETURN NEW ;				
+				END IF ;
+
+			END IF ; 
+		ELSIF (TG_OP = 'UPDATE') THEN 	
+			IF NEW."course_code" NOT IN (SELECT course_code FROM "Course" WHERE lab_hours > 0 ) THEN 
+				IF NEW.exam_min != 0 OR	NEW.lab_min != 0 OR NEW.exam_percentage != 100 THEN
+					RAISE EXCEPTION 'The lesson does not have a lab , so the grade rules have default values (0,0,100) and cannot be changed!' ;
+				ELSE 
+					NEW.exam_min = 0 ;
+					NEW.lab_min = 0 ; 
+					NEW.exam_percentage = 100 ; 
+					RETURN NEW ;
+				END IF ;
+			ELSE -- είναι εργαστηριακό 
+				IF NEW.exam_min is null OR NEW.lab_min is null OR NEW.exam_percentage is null THEN
+					RAISE EXCEPTION 'The lesson has a lab, so all the grade rules must be assigned!';
+				ELSE RETURN NEW ;				
+				END IF ;
+			END IF ; 
+		END IF ; 
+		RETURN NULL ; 
+     END ; 
+     $courserun_rules$ LANGUAGE 'plpgsql' ;
+
+CREATE TRIGGER same_amkas
+BEFORE INSERT OR UPDATE ON "CourseRun"
+FOR EACH ROW 
+WHEN ((NEW."Professor_amka1" = NEW."Professor_amka2") AND (NEW."Professor_amka1" is not NULL))
+EXECUTE PROCEDURE process_same_amkas();
+
+CREATE OR REPLACE FUNCTION process_same_amkas() RETURNS TRIGGER AS $same_amkas$
+    BEGIN
+				
+			NEW."Professor_amka2" = null ; 
+			RETURN NEW ; 		
+     END ; 
+$same_amkas$ LANGUAGE 'plpgsql' ;
+
+CREATE TRIGGER valid_courserun_semester_lessons
+BEFORE INSERT OR UPDATE ON "CourseRun"
+FOR EACH ROW 
+EXECUTE PROCEDURE process_valid_courserun_semester_lessons();
+
+CREATE OR REPLACE FUNCTION process_valid_courserun_semester_lessons() RETURNS TRIGGER AS $valid_courserun_semester_lessons$
+    BEGIN				
+			IF (NEW.course_code NOT IN (SELECT course_code FROM "Course" WHERE typical_season = (SELECT academic_season FROM "Semester" WHERE NEW.semester_id = semester_id ) )) THEN
+				RAISE EXCEPTION 'This is not a valid lesson for the academic season/semester!' ;
+			ELSE RETURN NEW ;
+			END IF ; 					
+     END ; 
+$valid_courserun_semester_lessons$ LANGUAGE 'plpgsql' ;
+
+
+
+

@@ -1,0 +1,40 @@
+
+CREATE OR REPLACE FUNCTION public.obligatory_lessons_of_student_2_4(IN amka_param integer)
+  RETURNS TABLE(code character, title character) AS
+$BODY$
+BEGIN
+ RETURN QUERY
+ ((SELECT DISTINCT C.course_code , C.course_title -- All obligatory lessons
+ FROM "Course" C 
+ WHERE C.obligatory ) 
+ EXCEPT
+(SELECT DISTINCT C.course_code , C.course_title-- The obligatory lessons , in which the student succeeded
+ FROM "Course" C , "CourseRun" CR , "Register" R 
+ WHERE C.obligatory AND C.course_code = CR.course_code AND R.register_status = 'pass' AND CR.serial_number = R.serial_number AND R."Student_amka" = amka_param ));
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.sector_with_most_thesis_2_5()
+  RETURNS TABLE(code integer, title character(100)) AS
+$BODY$
+BEGIN
+ RETURN QUERY
+
+SELECT  subquerry.sector_code ,  subquerry.sector_title  FROM
+
+	(SELECT  S.sector_code ,  S.sector_title , count(*)::integer as numofSect
+	FROM "Sector" S , "Lab" L , "Professor" P , "Diploma" D
+	WHERE D."Supervisor" = P.amka AND P."Lab_id_works" = L.lab_code AND S.sector_code = L.sector_code 
+	GROUP BY S.sector_code ,  S.sector_title) as subquerry
+	
+WHERE subquerry.numofSect >= ALL 	
+
+	(SELECT  count(*)::integer as numofSect
+	FROM "Sector" S , "Lab" L , "Professor" P , "Diploma" D
+	WHERE D."Supervisor" = P.amka AND P."Lab_id_works" = L.lab_code AND S.sector_code = L.sector_code 
+	GROUP BY S.sector_code ,  S.sector_title) ;	
+
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE

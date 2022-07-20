@@ -1,0 +1,41 @@
+
+CREATE OR REPLACE FUNCTION public.find_work_load_2_7()
+  RETURNS TABLE(labamka integer, name character varying, surname character varying, hoursum bigint) AS
+$$
+
+
+BEGIN
+	RETURN QUERY
+	(
+	SELECT * FROM 		
+	((SELECT "Labstaff".amka, "Labstaff".name, "Labstaff".surname, sum("Course".lab_hours)
+	FROM "Labstaff", "CourseRun", "Course", "Supports" , "Semester"
+	WHERE  "CourseRun".course_code = "Course".course_code 
+	AND "Supports".serial_number = "CourseRun".serial_number
+	AND "Supports"."Labstaff_amka" = "Labstaff".amka
+	AND "CourseRun".semester_id = "Semester".semester_id 
+	AND "Semester".semester_status = 'present' 
+	GROUP BY "Labstaff".amka, "Labstaff".name, "Labstaff".surname)
+
+	UNION
+
+	(SELECT "Labstaff".amka, "Labstaff".name, "Labstaff".surname, 0 as lab_hours
+	FROM "Labstaff"
+	WHERE   "Labstaff".amka NOT IN 
+	(
+		SELECT "Labstaff".amka
+		FROM "Labstaff", "CourseRun", "Course", "Supports" , "Semester"
+		WHERE  "CourseRun".course_code = "Course".course_code 
+		AND "Supports".serial_number = "CourseRun".serial_number
+		AND "Supports"."Labstaff_amka" = "Labstaff".amka
+		AND "CourseRun".semester_id = "Semester".semester_id 
+		AND "Semester".semester_status = 'present' 
+		GROUP BY "Labstaff".amka, "Labstaff".name, "Labstaff".surname
+	))) as sub_union
+	ORDER BY sub_union.amka
+	);
+END;
+
+
+$$
+LANGUAGE 'plpgsql' VOLATILE;

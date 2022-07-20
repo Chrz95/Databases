@@ -1,0 +1,59 @@
+CREATE OR REPLACE FUNCTION public.grad_students_who_have_not_grad_2_6() -- 2.6
+  RETURNS TABLE(am bigint) AS
+$BODY$
+BEGIN
+ RETURN QUERY 
+	(SELECT DISTINCT St.am
+	FROM "Register" R1 , "CourseRun" CR1 , "Student" St , "Course" C1
+	WHERE R1.serial_number = CR1.serial_number -- Joins
+	AND R1."Student_amka" = St.amka 
+	AND C1.course_code = CR1.course_code
+	AND R1.register_status = 'pass' -- has passed the lesson
+	AND -- Not graduated
+	((St.amka IN (SELECT "Student_amka" FROM "Diploma" WHERE diploma_grade is null OR graduation_date is null)) -- Has diploma with null values
+	OR
+	(St.amka NOT IN (SELECT "Student_amka" FROM "Diploma"))) -- Has no diploma  	
+	AND NOT EXISTS 
+		  ((SELECT course_code FROM "Course" WHERE obligatory)  -- Has passed all obligatory 
+	           EXCEPT
+		  (SELECT C2.course_code 
+		   FROM "Register" R2 , "CourseRun" CR2 , "Course" C2
+		   WHERE R2.register_status = 'pass' 
+		   AND obligatory 
+		   AND R2.serial_number = CR2.serial_number 
+		   AND CR2.course_code = C2.course_code  
+		   AND R2."Student_amka" = R1."Student_amka"))
+	AND num_of_passed_lessons_2_6(R1."Student_amka",false) > (SELECT min_courses FROM "Graduation_rules" WHERE year = date_part('year',(SELECT entry_date FROM "Student" WHERE amka = R1."Student_amka"))) -- Has passed enough not obligatory courses
+	AND num_of_st_course_units_2_6(R1."Student_amka") > (SELECT min_units FROM "Graduation_rules" WHERE year = date_part('year',(SELECT entry_date FROM "Student" WHERE amka = R1."Student_amka")))) ; -- Has total units > min_units
+ END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.num_of_passed_lessons_2_6(amka_param integer,obligatory_param boolean) -- 2.6
+  RETURNS integer AS
+$BODY$
+BEGIN
+RETURN
+   (SELECT count(*) FROM "Register" R , "CourseRun" CR , "Course" C
+    WHERE R.register_status = 'pass' 
+    AND C.obligatory = obligatory_param 
+    AND R."Student_amka" = amka_param
+    AND R.serial_number = CR.serial_number 
+    AND CR.course_code = C.course_code) ;
+ END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.num_of_st_course_units_2_6(amka_param integer)
+ RETURNS integer AS
+$BODY$
+BEGIN
+RETURN
+   (SELECT sum(units) FROM "Register" R , "CourseRun" CR , "Course" C
+    WHERE R.register_status = 'pass' 
+    AND R."Student_amka" = amka_param
+    AND R.serial_number = CR.serial_number 
+    AND CR.course_code = C.course_code) ;
+ END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE

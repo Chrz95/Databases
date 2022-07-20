@@ -1,0 +1,26 @@
+CREATE OR REPLACE FUNCTION necessary_check_2_8(ccode character(7))
+RETURNS TABLE(
+  coursecode character(7),
+  coursetitle character (100)
+)AS
+$$
+BEGIN
+	RETURN QUERY
+	(
+	With Recursive Req (a,d)  as ( 	
+		select main as a, dependent as d from "Course_depends" WHERE mode ='required' OR mode = 'recommended'
+		union
+		select r.a as a, d.dependent as d
+		from Req r, "Course_depends" d
+		where r.d = d.main AND (mode ='required' OR mode = 'recommended'))
+		
+	select a,C.course_title
+	from Req , "Course" C
+	where d=ccode AND a = C.course_code
+	
+	 );
+END;
+
+
+$$
+LANGUAGE 'plpgsql' VOLATILE;

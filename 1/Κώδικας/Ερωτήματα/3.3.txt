@@ -1,0 +1,38 @@
+CREATE TRIGGER end_of_semester_3_3 -- 3.3
+BEFORE UPDATE ON "Semester"
+FOR EACH ROW 
+WHEN ((NEW.semester_status = 'past') AND (OLD.semester_status = 'present'))
+EXECUTE PROCEDURE process_end_of_semester_3_3 ();
+
+CREATE OR REPLACE FUNCTION process_end_of_semester_3_3() -- 3.3
+RETURNS TRIGGER AS $end_of_semester_3_3$
+    BEGIN
+
+		
+	UPDATE "Register"
+	SET 	final_grade = CASE WHEN ("Register".lab_grade IS NULL) THEN "Register".exam_grade
+			      WHEN ("Register".lab_grade < A.lab_min) then 0
+			      WHEN ("Register".exam_grade < A.exam_min) then "Register".exam_grade
+			      ELSE ("Register".exam_grade * A.exam_percentage + "Register".lab_grade*(100 - A.exam_percentage))/100
+			      END
+			      
+	FROM (SELECT r.serial_number, cr.lab_min, cr.exam_min, cr.exam_percentage
+		FROM(("Register" r INNER JOIN "CourseRun" cr ON r.serial_number = cr.serial_number) 
+		INNER JOIN "Semester" s ON cr.semester_id = s.semester_id AND s.semester_status = 'present')
+		INNER JOIN "Course" c ON c.course_code = cr.course_code) A
+	WHERE "Register".serial_number = A.serial_number AND "Register".final_grade is null AND "Register".register_status = 'approved';
+
+	UPDATE "Register"
+	SET 	register_status = CASE WHEN (final_grade < 5) THEN 'fail'::register_status_type
+				  ELSE 'pass'::register_status_type
+				  END
+	FROM (SELECT r.serial_number
+		FROM(("Register" r INNER JOIN "CourseRun" cr ON r.serial_number = cr.serial_number) 
+		INNER JOIN "Semester" s ON cr.semester_id = s.semester_id AND s.semester_status = 'present')
+		INNER JOIN "Course" c ON c.course_code = cr.course_code) A
+	WHERE "Register".serial_number = A.serial_number AND "Register".register_status = 'approved';
+	
+	RETURN NEW;		 			 
+     END;
+$end_of_semester_3_3$ 
+LANGUAGE 'plpgsql' ; 

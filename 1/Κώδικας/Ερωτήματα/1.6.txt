@@ -1,0 +1,177 @@
+CREATE OR REPLACE FUNCTION public.insert_courserun_1_6(semester_id_param integer)
+  RETURNS void AS
+$BODY$
+DECLARE 
+	t RECORD ; 
+	curs CURSOR FOR (SELECT C.course_code FROM "Course" C WHERE C.typical_season = (SELECT academic_season FROM "Semester" WHERE semester_id = semester_id_param)) ;
+BEGIN
+     IF EXISTS (SELECT * FROM "CourseRun" WHERE semester_id = semester_id_param) THEN 
+		RAISE EXCEPTION 'You have already assigned courses for this semester!';		
+     END IF ; 
+
+     IF semester_id_param in (SELECT semester_id FROM "Semester" WHERE semester_status = 'future' ) THEN
+
+	PERFORM nextval('"CourseRun_serial_number_seq"') ;
+	PERFORM setval ('"CourseRun_serial_number_seq"', currval('"CourseRun_serial_number_seq"') -1 , 'false') ;
+
+      IF (EXISTS (SELECT * FROM "CourseRun"))  THEN PERFORM setval ('"CourseRun_serial_number_seq"', (SELECT max(serial_number) FROM "CourseRun") + 1, 'false') ;
+      ELSE PERFORM setval ('"CourseRun_serial_number_seq"', 1, 'false') ;
+      END IF ; 
+
+		FOR t IN curs LOOP	
+		
+			IF FOUND is null THEN EXIT; END IF ; -- EXIT the loop			
+			
+			IF (t.course_code in (SELECT C.course_code FROM "Course" C WHERE C.lab_hours = 0 )) THEN  -- the lesson has not a lab 
+				IF (EXISTS (SELECT * FROM "CourseRun" CR WHERE CR.course_code = t.course_code)) THEN  -- If there is a previous run of the same course 
+					INSERT INTO "CourseRun" 
+					-- semester_id , exam_min , lab_min , exam_percentage , Profamka1 , Lab , course_code , Profamka2 , (serial_number)	  
+					SELECT semester_id_param ,null,null,null , subquery.amka1 , null , t.course_code,  subquery.amka2   -- The rules will be assigned later by the courserun_rules trigger
+					FROM Most_recent_CourseRun_of_lesson(t.course_code) as subquery  ;
+				ELSE
+					IF (random()>0.7) THEN -- The grade rules (exam_min , lab_min , exam_percentage ) will be assigned by courserun_rules trigger
+						INSERT INTO "CourseRun" (semester_id , exam_min , lab_min , exam_percentage , "Professor_amka1" , "Lab" , course_code , "Professor_amka2" ) 
+							VALUES (semester_id_param , null,null,null, choose_CourseRun_professors(t.course_code),null,t.course_code,null)  ;  
+					ELSE 
+						INSERT INTO "CourseRun" (semester_id , exam_min , lab_min , exam_percentage , "Professor_amka1" , "Lab" , course_code , "Professor_amka2" ) 
+							VALUES (semester_id_param , null,null,null, choose_CourseRun_professors(t.course_code),null,t.course_code,choose_CourseRun_professors(t.course_code))  ; 
+					END IF ;
+				END IF  ; 
+			ELSIF (t.course_code in (SELECT C.course_code FROM "Course" C WHERE C.lab_hours > 0 )) THEN  -- the lesson has a lab 
+				IF (EXISTS (SELECT * FROM "CourseRun" CR WHERE CR.course_code = t.course_code)) THEN  -- If there is a previous run of the same course 
+				
+					INSERT INTO "CourseRun" 
+					-- semester_id , exam_min , lab_min , exam_percentage , Profamka1 , Lab , course_code , Profamka2 , (serial_number)	  
+					SELECT semester_id_param ,subquery.exam_min_param ,subquery.lab_min_param ,subquery.exam_percentage_param , null, subquery.lab_param , t.course_code,  null   -- The professors will be assigned later
+					FROM Most_recent_CourseRun_of_lesson(t.course_code) as subquery ;
+
+					-- Labstaff assignment
+					
+					INSERT INTO "Supports" VALUES ((SELECT max(serial_number) FROM "CourseRun")::integer, choose_CourseRun_labstaff(t.course_code));
+
+					-- Professor assignment (Labstaff and lab must be assigned before professor assignment)					
+
+					UPDATE "CourseRun"					
+					SET "Professor_amka1" =  (SELECT amka1 FROM Most_recent_CourseRun_of_lesson(t.course_code))
+					WHERE ("CourseRun".serial_number = (SELECT max(serial_number) FROM "CourseRun")::integer);								
+										
+					UPDATE "CourseRun"
+					SET "Professor_amka2" = (SELECT amka2 from Most_recent_CourseRun_of_lesson(t.course_code))
+					WHERE ("CourseRun".serial_number = (SELECT max(serial_number) FROM "CourseRun")::integer);				
+									
+				ELSE
+					INSERT INTO "CourseRun"
+					-- semester_id , exam_min , lab_min , exam_percentage , Profamka1 , Lab , course_code , Profamka2 , (serial_number)	  
+					SELECT semester_id_param , get_random_number (2,10) ,get_random_number (2,10) ,get_random_number (10,100) ,null , choose_lesson_related_lab (t.course_code),t.course_code,null  ; -- The professors will be assigned later
+					
+					-- Labstaff assignment
+					
+					INSERT INTO "Supports" VALUES ((SELECT max(serial_number) FROM "CourseRun")::integer, choose_CourseRun_labstaff(t.course_code));
+
+					-- Professor assignment (Labstaff and lab must be assigned before professor assignment)
+
+					UPDATE "CourseRun"					
+					SET "Professor_amka1" =  choose_CourseRun_professors (t.course_code)
+					WHERE ("CourseRun".serial_number = (SELECT max(serial_number) FROM "CourseRun")::integer);								
+										
+					IF (random()>0.7) THEN -- ONE PROFESSOR
+						UPDATE "CourseRun"
+						SET "Professor_amka2" =  null
+						WHERE ("CourseRun".serial_number = (SELECT max(serial_number) FROM "CourseRun")::integer);
+					ELSE -- TWO PROFESSORS
+						UPDATE "CourseRun"
+						SET "Professor_amka2" =  choose_CourseRun_professors (t.course_code)
+						WHERE ("CourseRun".serial_number = (SELECT max(serial_number) FROM "CourseRun")::integer);
+					END IF ;
+				
+				END IF  ; 
+			END IF ; 		
+		END LOOP ;
+		
+	ELSIF semester_id_param not in (SELECT semester_id FROM "Semester" ) THEN RAISE EXCEPTION 'The semester does not exist!';
+	ELSE RAISE EXCEPTION 'The semester must have "future" status!' ; 
+	END IF  ; 
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+  COST 100;
+ALTER FUNCTION public.insert_courserun_1_6(integer)
+  OWNER TO postgres;
+
+CREATE OR REPLACE FUNCTION Most_recent_CourseRun_of_lesson(course_code_param character varying (7))
+RETURNS TABLE (exam_min_param numeric , lab_min_param  numeric , exam_percentage_param  numeric ,amka1 integer ,lab_param integer , amka2 integer ,max_date date) AS
+$$
+BEGIN
+    RETURN QUERY 
+    SELECT exam_min, lab_min , exam_percentage ,CR."Professor_amka1", CR."Lab" , CR."Professor_amka2", max(end_date) -- επιλογή του πιο πρόσφατου courserun του μαθήματος (ανεξαρτήτως semester)
+    FROM "CourseRun" CR, "Semester" S 
+    WHERE course_code = course_code_param AND CR.semester_id = S.semester_id AND CR.serial_number <> currval ('"CourseRun_serial_number_seq"')
+    GROUP BY exam_min, lab_min , exam_percentage ,CR."Professor_amka1", CR."Lab" , CR."Professor_amka2"  ;
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;
+
+CREATE OR REPLACE FUNCTION choose_lesson_related_lab (course_code_param character varying (7))
+RETURNS integer AS
+$$
+DECLARE
+	temp_lab integer ; 
+BEGIN
+    temp_lab := (SELECT L.lab_code
+    FROM "Lab" L , "Lab_fields" Lf 
+    WHERE Lf.field_code = left(course_code_param,3) AND Lf.lab_code = L.lab_code
+    ORDER BY random () LIMIT 1)  :: integer ;
+
+    IF (temp_lab is not null) THEN RETURN temp_lab;
+    ELSE RETURN (SELECT L.lab_code FROM "Lab" L  ORDER BY random () LIMIT 1) ;
+    END IF ;     
+
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;
+
+CREATE OR REPLACE FUNCTION choose_CourseRun_professors (course_code_param character varying (7))
+RETURNS integer AS
+$$
+DECLARE
+	temp_amka integer ; 
+BEGIN
+    temp_amka := (SELECT P.amka
+    FROM "Professor" P , "Lab" L , "Lab_fields" Lf 
+    WHERE Lf.field_code = left(course_code_param,3) AND Lf.lab_code = L.lab_code AND P."Lab_id_works" = L.lab_code
+    ORDER BY random () LIMIT 1) :: integer ;
+
+    IF (temp_amka is not null) THEN RETURN temp_amka;
+    ELSE RETURN (SELECT P.amka FROM "Professor" P ORDER BY random () LIMIT 1);
+    END IF ;     
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;
+
+CREATE OR REPLACE FUNCTION choose_CourseRun_labstaff (course_code_param character varying (7))
+RETURNS integer AS
+$$
+DECLARE
+	temp_amka integer ; 
+BEGIN
+    temp_amka := (SELECT LS.amka
+    FROM "Labstaff" LS , "Lab" L , "Lab_fields" Lf 
+    WHERE Lf.field_code = left(course_code_param,3) AND Lf.lab_code = L.lab_code AND LS."Lab_id_works" = L.lab_code
+    ORDER BY random () LIMIT 1)  :: integer ;
+
+    IF (temp_amka is not null) THEN RETURN temp_amka;
+    ELSE RETURN (SELECT LS.amka FROM "Labstaff" LS  ORDER BY random () LIMIT 1);
+    END IF ;  
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;
+
+CREATE OR REPLACE FUNCTION get_random_number(start_num numeric, end_num numeric) RETURNS numeric AS $$
+BEGIN
+    RETURN (random() * (end_num-start_num) + start_num);
+END;
+$$ LANGUAGE 'plpgsql' VOLATILE;
+
+	  
+
+

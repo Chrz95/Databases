@@ -1,0 +1,22 @@
+CREATE OR REPLACE FUNCTION public.diploma_input_1_4 ( -- 1.4
+    am_student bigint,
+    amka_supervisor integer,
+    amka_member1 integer,
+    amka_member2 integer,
+    title character varying(100))
+  RETURNS void AS
+$BODY$
+BEGIN
+	
+	PERFORM nextval('"Diploma_diploma_num_seq"') ;
+	PERFORM setval ('"Diploma_diploma_num_seq"', currval('"Diploma_diploma_num_seq"') -1 , 'false') ;
+
+	 IF (EXISTS (SELECT * FROM "Diploma"))  THEN PERFORM setval ('"Diploma_diploma_num_seq"', (SELECT max(diploma_num) FROM "Diploma") + 1, 'false') ;
+	 ELSE PERFORM setval ('"Diploma_diploma_num_seq"', 1, 'false') ;
+	 END IF ; 
+	
+	INSERT INTO "Diploma" ("Student_amka", "Supervisor", "Committee_1", "Committee_2", thesis_title)
+	VALUES ((SELECT amka FROM "Student" WHERE "Student".am = am_student), amka_supervisor, amka_member1, amka_member2, title);
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE

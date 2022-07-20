@@ -1,0 +1,17 @@
+CREATE OR REPLACE FUNCTION public.student_by_code_2_2(IN tempcode character varying)
+  RETURNS TABLE(name character varying, surname character varying, am bigint) AS
+$BODY$
+BEGIN
+	RETURN QUERY
+	(
+	SELECT "Student".name, "Student".surname, "Student".am
+	FROM "Student", "Register", "CourseRun", "Semester"
+	WHERE "CourseRun".course_code = tempcode 
+		AND "CourseRun".semester_id = "Semester".semester_id 
+		AND "Semester".semester_status = 'present' 
+		AND "CourseRun".serial_number = "Register".serial_number 
+		AND "Register"."Student_amka" = "Student".amka
+		AND "Register".register_status = 'approved'	 );
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE

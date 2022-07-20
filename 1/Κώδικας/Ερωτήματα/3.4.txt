@@ -1,0 +1,56 @@
+CREATE TRIGGER valid_lesson_registration_3_4
+BEFORE UPDATE ON "Register"
+FOR EACH ROW 
+WHEN ((OLD.register_status = 'proposed') OR (OLD.register_status = 'requested') AND NEW.register_status = 'approved')
+EXECUTE PROCEDURE process_valid_lesson_registration_3_4();
+
+CREATE OR REPLACE FUNCTION public.process_valid_lesson_registration_3_4()
+  RETURNS trigger AS $valid_lesson_registration_3_4$
+  DECLARE 
+   required boolean ;
+   numOfLessons integer  ;
+   passed boolean ;
+  BEGIN			 
+
+	required := (EXISTS(SELECT anc  -- αν υπάρχουν προαπαιτούμενα που δεν τα έχει περάσει ο μαθητής
+	FROM required_lessons -- its a view
+	WHERE des IN 
+		(SELECT course_code 
+		FROM "CourseRun" CR  
+		WHERE NEW.serial_number = CR.serial_number) AND
+	      anc NOT IN  -- το course_code του μαθήματος που έκανε αίτηση ο φοιτητής	
+		(SELECT course_code -- the courseruns (number of lessons) of the semester the student has applied for 
+		FROM "CourseRun" CR 
+		WHERE serial_number in   
+			(SELECT serial_number FROM "Register" R WHERE R."Student_amka" = NEW."Student_amka" AND register_status = 'pass' )))) ;  -- serial_numbers of all CourseRuns the student has registered for 
+
+	numOfLessons := (SELECT count(course_code) as lessons -- the courseruns (number of lessons) of the semester the student has applied for 
+		FROM "CourseRun" CR 
+		WHERE CR.serial_number in   
+			(SELECT serial_number FROM "Register" R WHERE R."Student_amka" = NEW."Student_amka" AND register_status <> 'rejected' )  -- serial_numbers of all CourseRuns the student has registered for 
+		AND CR.semester_id in
+			(SELECT CR.semester_id FROM "CourseRun" CR WHERE NEW.serial_number = CR.serial_number)) ; -- the semester_id (one) of the CourseRun the student has applied for  >= 10) )  	
+
+	IF ((SELECT DISTINCT CR.course_code FROM "CourseRun" CR , "Register" R WHERE R.serial_number = CR.serial_number AND R.serial_number = NEW.serial_number) -- κωδικός μαθηματος που έγινε η αίτηση
+		IN  (SELECT CR.course_code FROM "CourseRun" CR , "Register" R WHERE R.serial_number = CR.serial_number AND R.register_status = 'pass' AND R."Student_amka" = NEW."Student_amka")) THEN -- the lessons the student has passed
+			passed := true ; 
+	ELSE passed := false ; 	
+	END IF ; 	
+
+	IF ((required) OR (numOfLessons > 10) OR (passed)) THEN 
+		NEW.register_status = 'rejected' ;	
+	END IF ; 
+	RETURN NEW;
+	 			 
+   END  
+$valid_lesson_registration_3_4$
+LANGUAGE plpgsql VOLATILE
+
+CREATE RECURSIVE VIEW Required_lessons(anc,des) AS (
+		(SELECT main as anc,dependent as des 
+		FROM "Course_depends" 
+		WHERE mode='required') 
+		UNION
+		(SELECT r.anc as anc,d.dependent as des
+		FROM Required_lessons r, "Course_depends" d
+		WHERE r.des = d.main AND mode='required'))

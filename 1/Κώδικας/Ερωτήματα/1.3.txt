@@ -1,0 +1,22 @@
+CREATE OR REPLACE FUNCTION public.years_passed_from_date(entry_date date)
+  RETURNS numeric AS
+$BODY$
+BEGIN
+	RETURN (left(((now() - entry_date)::character varying (20)),4)::numeric) / 365 ; 
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.insert_incomp_thesis_grade_1_3() -- 1.3
+  RETURNS void AS
+$BODY$
+BEGIN
+	UPDATE "Diploma"	
+	SET thesis_grade = floor(random()*(10-5+1))+5 -- random grade in [5,10]
+	WHERE thesis_grade is null AND "Student_amka" IN
+	(SELECT St.amka
+	FROM "Student" St
+	WHERE years_passed_from_date(St.entry_date) >= 5) ;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE

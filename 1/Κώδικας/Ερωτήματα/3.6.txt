@@ -1,0 +1,107 @@
+CREATE TRIGGER auto_diploma_generate_3_6
+AFTER INSERT OR UPDATE ON "Semester"
+FOR EACH ROW 
+WHEN ((NEW.academic_season = 'winter') AND (NEW.semester_status = 'present'))
+EXECUTE PROCEDURE process_auto_diploma_generate_3_6(); 
+
+CREATE OR REPLACE FUNCTION public.process_auto_diploma_generate_3_6()
+  RETURNS trigger AS
+$BODY$
+  DECLARE
+	t RECORD ; 
+	curs CURSOR FOR (SELECT St.am , St.name , St.surname , St.amka FROM "Student" St WHERE ((NEW.academic_year - date_part ('year' ,St.entry_date)) >= 4)) ;  -- has completed 4 four years and entered the fifth year
+	supervisor integer ;
+	committee_1 integer ;
+	committee_2 integer ;
+  BEGIN
+        FOR t IN curs LOOP
+		IF (t.amka NOT IN (SELECT "Student_amka" FROM "Diploma")) THEN	
+			supervisor  := select_committee() ;
+			committee_1 := select_committee() ;
+			committee_2 := select_committee() ;
+			-- am , supervisor , committee 1 , committee 2 , title
+			PERFORM diploma_input_1_4 (t.am,supervisor,committee_1 ,committee_2,concat ('Διπλωματική Εργασία',' <',t.surname,'> <',t.name,'>'));
+
+		END IF ;
+        END LOOP ;	
+	RETURN NEW;	 			 
+   END  
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+  COST 100;
+ALTER FUNCTION public.process_auto_diploma_generate_3_6()
+  OWNER TO postgres;
+
+CREATE OR REPLACE FUNCTION public.select_committee() --returns a committeee or supervisor with the least diplomas
+RETURNS integer AS 
+$BODY$	
+BEGIN
+		RETURN 	(SELECT amka_param 
+			FROM diploma_professors() 
+			WHERE (number_of_diplomas in 
+				(SELECT min(number_of_diplomas) 
+				FROM diploma_professors())) 			
+			ORDER BY random() LIMIT 1 );				
+ END  
+   $BODY$	
+LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.diploma_professors()
+  RETURNS TABLE(amka_param integer, number_of_diplomas integer) AS
+$BODY$
+BEGIN
+ RETURN QUERY
+		(SELECT sub_sum1.amka as Amka , sum(sum_com)::integer as numofTimes FROM
+		((SELECT amka , count (amka) as sum_com
+		FROM "Professor" , "Diploma"
+		WHERE amka = "Supervisor"
+		GROUP BY amka
+		UNION	
+		SELECT amka , count (amka) as sum_com
+		FROM "Professor" , "Diploma"
+		WHERE amka = "Committee_1"
+		GROUP BY amka
+		UNION
+		SELECT amka , count (amka) as sum_com
+		FROM "Professor" , "Diploma"
+		WHERE amka = "Committee_2"
+		GROUP BY amka)   
+		UNION 
+		(SELECT amka , 0
+		FROM "Professor"
+		WHERE amka NOT IN 
+			(SELECT DISTINCT amka_com FROM 
+			((SELECT "Supervisor" as amka_com from "Diploma")
+			UNION
+			(SELECT  "Committee_1" as amka_com from "Diploma")
+			UNION
+			(SELECT "Committee_2" as amka_com from "Diploma")) as sums0))) as sub_sum1 
+	GROUP BY sub_sum1.amka 
+	ORDER BY sub_sum1.amka); 			
+ END  
+   $BODY$	
+LANGUAGE plpgsql VOLATILE
+
+CREATE TRIGGER amka_duplicates_3_6
+BEFORE INSERT OR UPDATE ON "Diploma"
+FOR EACH ROW 
+WHEN ((NEW."Supervisor" = NEW."Committee_1") OR (NEW."Committee_2" = NEW."Committee_1") OR (NEW."Supervisor" = NEW."Committee_2"))
+EXECUTE PROCEDURE process_amka_duplicates_3_6(); 
+
+CREATE OR REPLACE FUNCTION public.process_amka_duplicates_3_6()
+  RETURNS trigger AS
+$amka_duplicates_3_6$ 
+  BEGIN
+       IF (NEW."Supervisor" = NEW."Committee_1") THEN 
+		NEW."Committee_1" = select_committee();
+		RETURN NEW;
+       ELSIF (NEW."Committee_2" = NEW."Committee_1") THEN
+		NEW."Committee_1" = select_committee();
+		RETURN NEW;
+       ELSIF (NEW."Supervisor" = NEW."Committee_2") THEN
+		NEW."Committee_2" = select_committee();
+		RETURN NEW;
+       END IF ;		 			 
+   END  
+$amka_duplicates_3_6$
+  LANGUAGE plpgsql VOLATILE

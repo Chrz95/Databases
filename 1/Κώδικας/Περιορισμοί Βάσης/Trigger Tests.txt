@@ -1,0 +1,110 @@
+﻿     -- TESTS
+
+     -- lab_id_highest_rank
+
+     SELECT insert_professors(40);
+
+INSERT INTO "Lab" VALUES (11,1, 'rgggh', 'dsgdgdsg','1001196'   ) -- Must enter amka is full professor
+INSERT INTO "Lab" VALUES (12,1, 'rgggh', 'dsgdgdsg','1001199'   )  -- Reject because of trigger
+INSERT INTO "Lab" VALUES (13,1, 'rgggh', 'dsgdgdsg','1001187'   )-- Error because of amka for key
+
+
+-- Test update
+
+	-- courserun_assigned_labstaff_lab
+
+SELECT insert_labstaff(40);
+
+-- serial_number , Labstaff_amka
+INSERT INTO "Supports" VALUES (1000000010, 2733677) ;
+INSERT INTO "Supports" VALUES (1000000011, 2733679 ) ;
+INSERT INTO "Supports" VALUES (1000000005,2733681 ) ;
+
+-- 'HPY 416' has lab
+-- 'ΑΓΓ 101' doesnt have lab
+
+-- The first five do not interest us
+-- semester_id , exam_min , lab_min , exam_percentage , amka1 , lab_id , course_code , amka2 , (serial_number)
+
+-- old test
+
+INSERT INTO "CourseRun" VALUES (1,1, 1, 1,1,null,'ΑΓΓ 201',2); -- Check what happens if course has not a lab and New.lab is null (accepted)
+INSERT INTO "CourseRun" VALUES (3,1, 1, 1,3,null,'ΑΓΓ 101',4); -- Check what happens if course has not a lab and serial number is not in supports  (accepted) 
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,4,null,'HPY 416',5); -- Check what happens if course has not a lab and New.lab is null and serial number is not in supports  (accepted) 
+
+INSERT INTO "CourseRun" VALUES (1,1, 1, 1,1,null,'ΑΓΓ 202',2); -- Check what happens if only one amka is null  (rejected)
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,4,null,'HPY 416',5); -- Check what happens if course has a lab and New.lab is null (rejected)
+INSERT INTO "CourseRun" VALUES (5,1, 1, 1,5,10,'HPY 416',6); -- Check what happens if course has a lab and serial number is not in supports  (rejected) 
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,4,null,'HPY 416',5); -- Check what happens if course has a lab and New.lab is null and serial number is not in supports  (rejected) 
+
+-- Test update (με το χέρι στον πίνακα)
+
+-- Deactivate semester_id key , the two professor amkas temporarily
+-- Restore it with
+ALTER TABLE public."CourseRun"
+  ADD CONSTRAINT "CourseRun_semester_id_fkey" FOREIGN KEY (semester_id)
+      REFERENCES public."Semester" (semester_id) MATCH FULL
+      ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."CourseRun"
+  ADD CONSTRAINT "CourseRun_Professor_amka1_fkey" FOREIGN KEY ("Professor_amka1")
+      REFERENCES public."Professor" (amka) MATCH SIMPLE
+      ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."CourseRun"
+
+  ADD CONSTRAINT "CourseRun_Professor_amka2_fkey" FOREIGN KEY ("Professor_amka2")
+      REFERENCES public."Professor" (amka) MATCH FULL
+      ON UPDATE CASCADE ON DELETE CASCADE;
+
+-- new test
+
+-- semester_id , exam_min , lab_min , exam_percentage , amka1 , lab_id , course_code , amka2 , (serial_number)
+
+INSERT INTO "CourseRun" VALUES (1,1, 1, 1,1,null,'ΑΓΓ 202',2); -- Check what happens if only one amka is null  (rejected)
+
+INSERT INTO "CourseRun" VALUES (3,1, 1, 1,null,1,'ΑΓΓ 101',null); -- Check what happens if both amkas are null  (accepted)  - doesn't have lab , lab assigned -- Will allow assignment (on update)
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,null,2,'ΑΓΓ 102',null); -- lab assigned and in supports-- Will allow assignment
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,null,2,'ΜΑΘ 101',null); -- lab assigned and not in supports-- Will allow assignment
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,null,null,'ΑΓΓ 201',null); -- lab not assigned and in supports (accepted)  -- Will allow assignment
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,null,null,'ΑΓΓ 202',null); -- lab not assigned (accepted) and not in supports -- Will allow assignment
+
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,null,2,'HPY 416',null);  -- Check what happens if both amkas are null  (accepted)    - has lab -- lab assigned and in supports -- Will allow assignment
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,null,null,'ΗΡΥ 101',null);  -- Check what happens if both amkas are null    - has lab -- lab not assigned and in supports -- Will allow assignment
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,null,2,'ΗΡΥ 102',null);  -- Check what happens if both amkas are null    - has lab -- lab assigned and not in supports -- Will not allow assignment
+INSERT INTO "CourseRun" VALUES (4,1, 1, 1,null,2,'ΗΡΥ 201',null);  -- Check what happens if both amkas are null    - has lab -- lab not assigned and not in supports -- Will not allow assignment
+
+SELECT insert_labstaff(40);
+
+-- serial_number , Labstaff_amka
+
+INSERT INTO "Supports" VALUES (1000000094, 2733910) ; -- accepted
+INSERT INTO "Supports" VALUES (1000000095, 2733911 ) ;
+INSERT INTO "Supports" VALUES (1000000096, 2733912) ;
+INSERT INTO "Supports" VALUES (1000000097, 2733913 ) ;
+INSERT INTO "Supports" VALUES (1000000104,2733914 ) ;
+INSERT INTO "Supports" VALUES (1000000105,2733915 ) ;
+INSERT INTO "Supports" VALUES (1000000106,2733916 ) ;
+INSERT INTO "Supports" VALUES (1000000107,2733917 ) ; 
+
+INSERT INTO "Supports" VALUES (1000000107,2733609 ) ; -- Rejected because of foreign key (amka)
+INSERT INTO "Supports" VALUES (1000000108,2733910 ) ; -- Rejected because of foreign key (serial)
+
+-- Test update (με το χέρι στον πίνακα)
+
+-- Restore it with
+ALTER TABLE public."CourseRun"
+  ADD CONSTRAINT "CourseRun_semester_id_fkey" FOREIGN KEY (semester_id)
+      REFERENCES public."Semester" (semester_id) MATCH FULL
+      ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."CourseRun"
+  ADD CONSTRAINT "CourseRun_Professor_amka1_fkey" FOREIGN KEY ("Professor_amka1")
+      REFERENCES public."Professor" (amka) MATCH SIMPLE
+      ON UPDATE CASCADE ON DELETE CASCADE;
+
+ALTER TABLE public."CourseRun"
+
+  ADD CONSTRAINT "CourseRun_Professor_amka2_fkey" FOREIGN KEY ("Professor_amka2")
+      REFERENCES public."Professor" (amka) MATCH FULL
+      ON UPDATE CASCADE ON DELETE CASCADE;

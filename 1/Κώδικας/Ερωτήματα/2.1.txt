@@ -1,0 +1,19 @@
+CREATE OR REPLACE FUNCTION search_student_2_1(searcham bigint) -- 2.1
+RETURNS TABLE(
+name character varying(20),
+  email character varying(20),
+  father_name character varying(20),
+  surname character varying(20),
+  entry_date date,
+  am bigint,
+  amka integer 
+)AS
+$$
+BEGIN
+	RETURN QUERY
+	(SELECT "Student".name, "Student".email, "Student".father_name, "Student".surname, "Student".entry_date, "Student".am, "Student".amka
+	 FROM "Student"
+	 WHERE "Student".am = searcham);
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;

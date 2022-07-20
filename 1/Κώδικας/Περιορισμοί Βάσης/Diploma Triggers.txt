@@ -1,0 +1,17 @@
+CREATE TRIGGER valid_grad_date
+BEFORE INSERT OR UPDATE ON "Diploma"
+FOR EACH ROW 
+WHEN (NEW.graduation_date is not null)
+EXECUTE PROCEDURE process_valid_grad_date();
+
+CREATE OR REPLACE FUNCTION public.process_valid_grad_date()
+  RETURNS trigger AS
+$valid_grad_date$
+    BEGIN
+    		IF (NEW.graduation_date <= (SELECT entry_date FROM "Student" WHERE amka = NEW."Student_amka")) THEN 
+				RAISE EXCEPTION 'Invalid graduation date!';
+		ELSE RETURN NEW ; 
+		END IF ;
+     END  
+          $valid_grad_date$
+  LANGUAGE 'plpgsql' ;

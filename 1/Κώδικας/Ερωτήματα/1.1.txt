@@ -1,0 +1,141 @@
+CREATE OR REPLACE FUNCTION insert_all_1_1 (numOfEntries integer , entry_date date) -- 1.1
+RETURNS VOID AS
+$$
+BEGIN
+
+PERFORM insert_labstaff_1_1 (numOfEntries);
+PERFORM insert_professors_1_1 (numOfEntries);
+PERFORM insert_students_1_1 (entry_date,numOfEntries);
+ 
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;
+
+CREATE OR REPLACE FUNCTION insert_labstaff_1_1 (numOfEntries integer) -- 1.1
+RETURNS VOID AS
+$$
+BEGIN
+
+ PERFORM nextval('"Labstaff_amka_seq"') ; -- initialize sequence
+ PERFORM setval ('"Labstaff_amka_seq"', currval('"Labstaff_amka_seq"') -1 , 'false') ;
+
+    IF (EXISTS (SELECT * FROM "Labstaff"))  THEN PERFORM setval ('"Labstaff_amka_seq"', (SELECT max(amka) FROM "Labstaff") + 1, 'false') ;
+  ELSE PERFORM setval ('"Labstaff_amka_seq"', 1, 'false') ;
+  END IF ; 
+  
+  INSERT INTO "Labstaff"
+  -- name email father_name , surname ,  lab_id , level , (amka)  
+  SELECT n.name , concat( setval ('"Labstaff_amka_seq"', nextval('"Labstaff_amka_seq"') , 'false') :: character varying (20) , random_pick(enum_range(NULL::email_type))) , father_name ,  adapt_surname(s.surname,n.sex) ,  random_lab_id()  , random_pick(enum_range(NULL::level_type))::level_type 
+  FROM ((random_names(numOfEntries) n JOIN random_surnames(numOfEntries) s USING (id)) JOIN random_father_names (numOfEntries) f USING (id)) ;
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;
+
+  CREATE OR REPLACE FUNCTION insert_students_1_1 (entry_date_param date, numOfEntries integer) -- 1.1
+RETURNS VOID AS
+$$
+BEGIN  
+
+  PERFORM nextval('"am_seq"') ; -- initialize sequence
+ PERFORM setval ('"am_seq"', currval('"am_seq"') -1 , 'false') ;
+
+  PERFORM nextval('"Student_amka_seq"') ; -- initialize sequence
+ PERFORM setval ('"Student_amka_seq"', currval('"Student_amka_seq"') -1 , 'false') ;
+
+  IF NOT EXISTS (SELECT * FROM "Student" St WHERE date_part('year',St.entry_date)=  date_part('year',entry_date_param)) THEN  -- if there is no student of the same year
+  PERFORM (setval('"am_seq"',1,'false')) ;
+  ELSE 
+  PERFORM (setval('"am_seq"',right((SELECT max(am) FROM "Student" St WHERE date_part('year',St.entry_date)=  date_part('year',entry_date_param))::character varying (20),6)::bigint))  ;
+  END IF ;
+
+  IF (EXISTS (SELECT * FROM "Student"))  THEN PERFORM setval ('"Student_amka_seq"', (SELECT max(amka) FROM "Student") + 1, 'false') ;
+  ELSE PERFORM setval ('"Student_amka_seq"', 1, 'false') ;
+  END IF ; 
+  
+  INSERT INTO "Student"
+  SELECT name , concat( setval ('"Student_amka_seq"', nextval('"Student_amka_seq"') , 'false')   :: character varying (20) , random_pick(enum_range(NULL::email_type))) , father_name , adapt_surname(surname,sex), entry_date_param , create_am(date_part('year', entry_date_param)::integer,(nextval('"am_seq"')) ::integer)::integer
+  FROM (random_names(numOfEntries) n JOIN random_surnames(numOfEntries) s USING (id) ) JOIN random_father_names (numOfEntries) f USING (id) ;
+  
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;
+
+CREATE OR REPLACE FUNCTION insert_professors_1_1 (numOfEntries integer) -- 1.1
+RETURNS VOID AS
+$$
+BEGIN
+
+  PERFORM nextval('"Professor_amka_seq"') ; -- initialize sequence
+ PERFORM setval ('"Professor_amka_seq"', currval('"Professor_amka_seq"') -1 , 'false') ;
+
+ IF (EXISTS (SELECT * FROM "Professor"))  THEN PERFORM setval ('"Professor_amka_seq"', (SELECT max(amka) FROM "Professor") + 1, 'false') ;
+  ELSE PERFORM setval ('"Professor_amka_seq"', 1, 'false') ;
+  END IF ; 
+
+  INSERT INTO "Professor"
+  -- name email father_name , surname , rank,  lab_id , (amka)  
+  (SELECT n.name , concat( setval ('"Professor_amka_seq"', nextval('"Professor_amka_seq"') , 'false')   :: character varying (20)  , random_pick(enum_range(NULL::email_type))), father_name ,  adapt_surname(s.surname,n.sex) ,  random_pick(enum_range(NULL::rank_type))::rank_type  ,  random_lab_id()
+  FROM ((random_names(numOfEntries) n JOIN random_surnames(numOfEntries) s USING (id)) JOIN random_father_names (numOfEntries) f USING (id))) ;
+
+END;
+$$
+LANGUAGE 'plpgsql' VOLATILE;
+
+CREATE OR REPLACE FUNCTION public.random_lab_id()
+  RETURNS integer AS
+$BODY$	
+	SELECT lab_code  
+	FROM "Lab" 
+	ORDER BY random() LIMIT 1;
+$BODY$
+  LANGUAGE sql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.random_father_names(n integer)  
+  RETURNS TABLE(father_name character, id integer) AS
+$BODY$
+BEGIN
+ RETURN QUERY
+ SELECT nam.name , row_number() OVER () ::integer
+ FROM (SELECT "Name".name
+  FROM "Name" 
+  WHERE "Name".sex = 'M'
+  ORDER BY random() LIMIT n) as nam;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+
+ CREATE OR REPLACE FUNCTION random_pick(x anyarray)
+  RETURNS character varying (20) AS
+$BODY$
+BEGIN
+   RETURN x[floor((random()*(array_length(x,1)-1+1))+1)]; -- array_length (x,1) μηκος πίνακα στην πρώτη διάσταση
+END
+$BODY$ LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.random_names(IN n integer)
+  RETURNS TABLE(name character, sex character, id integer) AS
+$BODY$
+BEGIN
+ RETURN QUERY
+ SELECT nam.name, nam.sex, row_number() OVER ()::integer
+ FROM (SELECT "Name".name, "Name".sex 
+  FROM "Name" 
+  ORDER BY random() LIMIT n) as nam;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.random_surnames(IN n integer)
+  RETURNS TABLE(surname character, id integer) AS
+$BODY$
+BEGIN
+ RETURN QUERY
+ SELECT snam.surname, row_number() OVER ()::integer
+ FROM (SELECT "Surname".surname 
+  FROM "Surname"
+  WHERE right("Surname".surname,2)='ΗΣ' 
+  ORDER BY random() LIMIT n) as snam;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+

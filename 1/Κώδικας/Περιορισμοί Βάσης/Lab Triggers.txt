@@ -1,0 +1,15 @@
+CREATE TRIGGER lab_id_highest_rank
+BEFORE INSERT OR UPDATE ON "Lab"
+FOR EACH ROW EXECUTE PROCEDURE process_lab_id_highest_rank();
+
+CREATE OR REPLACE FUNCTION public.process_lab_id_highest_rank()
+  RETURNS trigger AS
+$lab_id_highest_rank$
+BEGIN
+	IF (NEW."Director_amka" NOT IN (SELECT amka FROM "Professor" Pr WHERE Pr.rank = 'full') ) THEN
+		RAISE EXCEPTION 'The director must be a full professor'; -- Do not allow director who has not 'full' rank
+	ELSE RETURN NEW ; 
+	END IF;
+	RETURN NULL ; 	
+ END ;   
+ $lab_id_highest_rank$ LANGUAGE 'plpgsql' ; 

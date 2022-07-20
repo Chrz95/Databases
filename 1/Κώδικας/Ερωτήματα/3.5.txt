@@ -1,0 +1,20 @@
+CREATE TRIGGER start_of_semester_3_5
+BEFORE UPDATE ON "Semester"
+FOR EACH ROW 
+WHEN ((NEW.semester_status = 'present') AND (OLD.semester_status = 'future'))
+EXECUTE PROCEDURE process_start_of_semester_3_5 ();
+
+CREATE OR REPLACE FUNCTION process_start_of_semester_3_5() RETURNS TRIGGER AS $start_of_semester_3_5$
+    DECLARE
+    r1 integer;
+    r2 integer;
+    BEGIN 			 
+	FOR r1 IN SELECT amka FROM "Student" LOOP
+			FOR r2 IN SELECT serial_number FROM "CourseRun" CR WHERE Cr.semester_id = NEW.semester_id AND serial_number NOT IN (SELECT serial_number FROM "Register" R WHERE R."Student_amka" = r1 ) LOOP				
+					INSERT INTO "Register" (register_status, "Student_amka",serial_number)	VALUES ('proposed', r1,r2);					
+			END LOOP;
+    	END LOOP;
+	RETURN NEW;
+     END;
+$start_of_semester_3_5$ 
+LANGUAGE 'plpgsql' ; 

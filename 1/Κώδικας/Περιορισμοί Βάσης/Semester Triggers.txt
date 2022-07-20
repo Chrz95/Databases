@@ -1,0 +1,28 @@
+CREATE TRIGGER semester_derived_attributes 
+BEFORE INSERT OR UPDATE ON "Semester"
+FOR EACH ROW EXECUTE PROCEDURE process_semester_derived_attributes();
+
+CREATE OR REPLACE FUNCTION public.process_semester_derived_attributes()
+  RETURNS trigger AS
+$semester_derived_attributes$
+    BEGIN
+		IF (TG_OP = 'INSERT') THEN
+			IF ((NEW.academic_year is null) AND (NEW.academic_season is null) ) THEN						
+				NEW.academic_year = date_part('year', NEW.start_date)::integer  ;
+				NEW.academic_season = CASE WHEN (((date_part('month', NEW.start_date))::integer) <= 8)  then 'spring'
+						      ELSE 'winter'
+						      END;
+				RETURN NEW;
+			ELSE RAISE EXCEPTION 'The academic year and season are derived attributes and must be null!';
+			END IF ; 
+		ELSIF (TG_OP = 'UPDATE') THEN						
+				NEW.academic_year = date_part('year', NEW.start_date)::integer  ;
+				NEW.academic_season = CASE WHEN (((date_part('month', NEW.start_date))::integer) <= 8)  then 'spring'
+						      ELSE 'winter'
+						      END;
+				RETURN NEW;					      			
+		END IF ; 				      
+		RETURN NULL;		 			 
+     END  
+          $semester_derived_attributes$
+  LANGUAGE 'plpgsql' ;

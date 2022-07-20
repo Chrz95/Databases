@@ -1,0 +1,60 @@
+CREATE OR REPLACE FUNCTION public.insert_all_100000_test(entry_date_param date)
+  RETURNS void AS
+$BODY$
+DECLARE
+	i integer;
+BEGIN
+	FOR i IN 1..1000 LOOP
+		PERFORM insert_all_1_1(100,entry_date_param);
+	END LOOP;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+
+  
+CREATE OR REPLACE FUNCTION public.insert_courseRuns_test(num_of_courseRuns integer ,semester_id_param integer)
+  RETURNS void AS
+$BODY$
+DECLARE
+	i integer;
+BEGIN
+	FOR i IN 1..num_of_courseRuns LOOP
+		INSERT INTO "CourseRun" VALUES (semester_id_param,0,0,0,1000001,1,i,1000002);		
+	END LOOP;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+
+CREATE OR REPLACE FUNCTION public.insert_Registers_test(num_of_Registers integer)
+  RETURNS void AS
+$BODY$
+DECLARE
+	i integer;
+BEGIN
+	FOR i IN 1..num_of_Registers LOOP
+		INSERT INTO "Register" VALUES ('approved',0,0,0,i,i+1000000);		
+	END LOOP;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE
+ 
+  CREATE OR REPLACE FUNCTION public.insert_all_10000_test(entry_date_param date)
+  RETURNS void AS
+$BODY$
+DECLARE
+	i integer;
+BEGIN
+	FOR i IN 1..100 LOOP
+		PERFORM insert_students_1_1(entry_date_param,100);
+	END LOOP;
+	
+	FOR i IN 1..100 LOOP
+		PERFORM insert_labstaff_1_1(100);
+	END LOOP;
+	
+	FOR i IN 1..100 LOOP
+		PERFORM insert_professors_1_1(100);
+	END LOOP;
+END;
+$BODY$
+  LANGUAGE plpgsql VOLATILE

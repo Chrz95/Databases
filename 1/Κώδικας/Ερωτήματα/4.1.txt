@@ -1,0 +1,32 @@
+﻿-- Prof_amka1 != null
+
+     CREATE VIEW lessons_of_current_semester (Code , Title , Names ) AS -- 4.1
+(SELECT DISTINCT C.course_code , C.course_title , concat('(',P1.surname,',',P1.name,'),(',P2.surname,',', P2.name, ')' )  -- The tuples whose prof_amka 2 is not null
+FROM "Course" C,  "CourseRun" CR , "Semester" S , "Professor" P1 ,"Professor" P2 
+WHERE C.course_code =  CR.course_code AND S.semester_status = 'present' AND  CR.semester_id = S.semester_id AND CR."Professor_amka1" = P1.amka AND CR."Professor_amka2" = P2.amka AND (CR."Professor_amka2" is not null ))
+UNION
+(SELECT DISTINCT C.course_code , C.course_title , concat('(',P1.surname,',',P1.name,'),(',null,',', null, ')' )  -- The tuples whose prof_amka 2 is null
+FROM "Course" C,  "CourseRun" CR , "Semester" S , "Professor" P1 
+WHERE C.course_code =  CR.course_code AND S.semester_status = 'present' AND  CR.semester_id = S.semester_id AND CR."Professor_amka1" = P1.amka AND (CR."Professor_amka2" is null ));
+
+-- Prof_amka1 can be null too (Εξετάζουμε κάθε περιπτωση αναλυτικα ώστε να δηλώνουμε και το concat σε κάθεμια)
+
+CREATE VIEW lessons_of_current_semester_4_1 (Code , Title , Names ) AS -- 4.1
+SELECT DISTINCT * FROM 
+(
+(SELECT C.course_code , C.course_title , concat('<',P1.surname,',',P1.name,'> , <',P2.surname,',', P2.name, '>' ) as ProfNames  -- The tuples whose prof_amka 2 AND prof_amka 1 is not null
+FROM "Course" C,  "CourseRun" CR , "Semester" S , "Professor" P1 ,"Professor" P2 
+WHERE C.course_code =  CR.course_code AND S.semester_status = 'present' AND  CR.semester_id = S.semester_id AND CR."Professor_amka1" = P1.amka AND CR."Professor_amka2" = P2.amka AND (CR."Professor_amka1" is not null ) AND (CR."Professor_amka2" is not null ))
+UNION
+(SELECT C.course_code , C.course_title , concat('<',P1.surname,',',P1.name,'> , <',null,',', null, '>' ) as ProfNames  -- The tuples whose only prof_amka 2 is null
+FROM "Course" C,  "CourseRun" CR , "Semester" S , "Professor" P1 
+WHERE C.course_code =  CR.course_code AND S.semester_status = 'present' AND  CR.semester_id = S.semester_id AND CR."Professor_amka1" = P1.amka AND (CR."Professor_amka2" is null ) AND (CR."Professor_amka1" is not null ))
+UNION
+(SELECT C.course_code , C.course_title , concat('<',null,',',null,'> , <',P2.surname,',', P2.name, '>'  ) as ProfNames  -- The tuples whose only prof_amka 1 is null
+FROM "Course" C,  "CourseRun" CR , "Semester" S ,"Professor" P2 
+WHERE C.course_code =  CR.course_code AND S.semester_status = 'present' AND  CR.semester_id = S.semester_id AND CR."Professor_amka2" = P2.amka AND (CR."Professor_amka1" is null )  AND (CR."Professor_amka2" is not null ))
+UNION
+(SELECT C.course_code , C.course_title , concat('<',null,',',null,'> , <',null,',', null, '>' ) as ProfNames  -- The tuples whose prof_amka 1 and  prof_amka 2 is null
+FROM "Course" C,  "CourseRun" CR , "Semester" S
+WHERE C.course_code =  CR.course_code AND S.semester_status = 'present' AND  CR.semester_id = S.semester_id  AND (CR."Professor_amka1" is null ) AND (CR."Professor_amka2" is null ))														      
+) as subquery ;

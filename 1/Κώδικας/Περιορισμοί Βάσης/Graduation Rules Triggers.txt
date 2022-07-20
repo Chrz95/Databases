@@ -1,0 +1,16 @@
+CREATE TRIGGER correct_grad_rules
+BEFORE INSERT OR UPDATE ON "Graduation_rules"
+FOR EACH ROW EXECUTE PROCEDURE process_correct_grad_rules();
+
+CREATE OR REPLACE FUNCTION public.process_correct_grad_rules()
+  RETURNS trigger AS
+$correct_grad_rules$
+    BEGIN
+    		IF ((NEW.min_courses <= (SELECT count(*) FROM "Course" WHERE obligatory)) OR (NEW.min_units < (SELECT sum(units) FROM "Course" WHERE obligatory))) THEN  
+			RAISE EXCEPTION 'Invalid graduation rules';
+		ELSE RETURN NEW;
+		END IF ; 			      
+		RETURN NULL;		 			 
+     END  
+          $correct_grad_rules$
+  LANGUAGE 'plpgsql' ;

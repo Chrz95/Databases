@@ -1,0 +1,73 @@
+CREATE TRIGGER register_derived_attribute
+BEFORE INSERT ON "Register"
+FOR EACH ROW EXECUTE PROCEDURE process_register_derived_attribute();
+
+CREATE OR REPLACE FUNCTION public.process_register_derived_attribute()
+  RETURNS trigger AS
+$register_derived_attribute$
+    BEGIN
+		    
+		IF (NEW.final_grade is null)  THEN RETURN NEW;
+		ELSE RAISE EXCEPTION 'The final grade is a derived attribute and must be null!';
+		END IF ; 			      
+		RETURN NULL;		 			 
+     END  
+          $register_derived_attribute$
+  LANGUAGE 'plpgsql' ; 
+
+CREATE TRIGGER register_labgrade_null
+BEFORE INSERT OR UPDATE ON "Register"
+FOR EACH ROW EXECUTE PROCEDURE process_register_labgrade_null();
+
+CREATE OR REPLACE FUNCTION public.process_register_labgrade_null()
+  RETURNS trigger AS
+$BODY$
+    BEGIN
+    		IF (SELECT CR.course_code FROM "CourseRun" CR WHERE CR.serial_number = NEW.serial_number ) in (SELECT C.course_code FROM "Course" C WHERE lab_hours = 0 ) AND NEW.lab_grade is not null THEN 
+			RAISE EXCEPTION 'The lesson does not have a lab and therefore the lab grade must be null!';
+		ELSE RETURN NEW;
+		END IF ; 			      
+		RETURN NULL;		 			 
+     END  
+          $BODY$
+  LANGUAGE 'plpgsql' ;
+
+CREATE TRIGGER correct_register_status
+BEFORE INSERT ON "Register"
+FOR EACH ROW 
+WHEN ((NEW.register_status != 'proposed') AND (NEW.register_status != 'requested'))
+EXECUTE PROCEDURE process_correct_register_status();
+
+CREATE OR REPLACE FUNCTION public.process_correct_register_status()
+  RETURNS trigger AS
+$correct_register_status$
+    BEGIN
+    		RAISE EXCEPTION 'A new registration can only be "proposed" or "requested"!';			      
+		RETURN NULL;		 			 
+     END  
+          $correct_register_status$
+  LANGUAGE 'plpgsql' ;
+
+CREATE TRIGGER approved_grades
+BEFORE INSERT OR UPDATE ON "Register"
+FOR EACH ROW 
+EXECUTE PROCEDURE process_approved_grades();
+
+CREATE OR REPLACE FUNCTION public.process_approved_grades()
+  RETURNS trigger AS $approved_grades$
+    BEGIN
+    		IF (TG_OP = 'INSERT') THEN
+			IF ((NEW.exam_grade is not null) OR (NEW.lab_grade is not null)) THEN
+				RAISE EXCEPTION 'A new registration must have null grades!';
+			ELSE RETURN NEW ; 
+			END IF ;
+    		ELSE -- Update
+			IF ((NEW.register_status <> 'approved')) AND ((NEW.exam_grade is not null) OR (NEW.lab_grade is not null)) THEN
+				RAISE EXCEPTION 'A student lesson registration must be "approved" to grade!';
+			ELSE RETURN NEW ;
+			END IF ;	
+    		END IF;	 
+    		RETURN NEW  ; 			 
+     END  
+          $approved_grades$
+  LANGUAGE 'plpgsql' ;

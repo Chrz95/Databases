@@ -1,0 +1,16 @@
+CREATE TRIGGER supports_no_lab
+BEFORE INSERT OR UPDATE ON "Supports"
+FOR EACH ROW EXECUTE PROCEDURE process_supports_no_lab();
+
+CREATE OR REPLACE FUNCTION public.process_supports_no_lab()
+  RETURNS trigger AS
+$supports_no_lab$
+    BEGIN
+				    
+		IF (SELECT CR.course_code FROM "CourseRun" CR WHERE CR.serial_number = NEW.serial_number ) in (SELECT C.course_code FROM "Course" C WHERE C.lab_hours > 0 ) THEN RETURN NEW;
+			ELSE RAISE EXCEPTION 'The lesson does not have a lab and therefore does not need labstaff support!';
+		END IF ; 			      
+		RETURN NULL;		 			 
+     END  
+          $supports_no_lab$
+  LANGUAGE plpgsql VOLATILE

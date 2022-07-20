@@ -1,0 +1,84 @@
+﻿CREATE TRIGGER rational_dates_3_1_3_2 -- 3.1 , 3.2
+  BEFORE INSERT OR UPDATE
+  ON public."Semester"
+  FOR EACH ROW
+  EXECUTE PROCEDURE public.process_rational_dates_3_1_3_2(); 
+
+CREATE OR REPLACE FUNCTION public.process_rational_dates_3_1_3_2() -- 3.1 , 3.2
+  RETURNS trigger AS
+$rational_dates_3_1_3_2$
+    BEGIN
+	  IF EXISTS(SELECT * FROM "Semester" S WHERE ((NEW.start_date, NEW.end_date) OVERLAPS (S.start_date, S.end_date)) AND S.semester_id <> NEW.semester_id ) THEN  -- ελέγχω αν συμπεφτουν οι ημερομηνίες με αλλου εξαμηνου 
+					RAISE EXCEPTION 'The semester is not valid, because there is another semester at this time period!'; 					
+	  ELSE				
+					IF (((NEW.end_date::date - NEW.start_date::date )>0) AND ((NEW.end_date::date - NEW.start_date::date ) > 91)) THEN  -- Correct order and rational dates (semester of normal duration) 91 = 7 days x 13 weeks 
+						RETURN NEW ; 	
+					ELSIF (((NEW.end_date::date - NEW.start_date::date )>0) AND (((NEW.end_date::date - NEW.start_date::date ) <= 91))) THEN 
+						RAISE EXCEPTION 'A semester must last at least 13 weeks (91 days)!' ;
+					ELSIF (((NEW.end_date::date - NEW.start_date::date )<0) AND (((NEW.end_date::date - NEW.start_date::date ) <= -91))) THEN 
+						RAISE EXCEPTION 'The start and end dates are not valid!' ;
+					ELSIF (((NEW.end_date::date - NEW.start_date::date )<0) AND (((NEW.end_date::date - NEW.start_date::date ) > -91))) THEN 
+						RAISE EXCEPTION 'The semester has not a normal duration and the dates are invalid!' ;
+					END IF ; 
+	END IF ;					  		
+	    				
+     END  
+     $rational_dates_3_1_3_2$
+  LANGUAGE plpgsql VOLATILE
+
+CREATE TRIGGER new_future_semester_3_1 -- 3.1 
+BEFORE INSERT ON "Semester"
+FOR EACH ROW EXECUTE PROCEDURE process_new_future_semester_3_1 ();
+
+CREATE OR REPLACE FUNCTION process_new_future_semester_3_1() --3.1
+RETURNS TRIGGER AS $new_future_semester_3_1$
+    BEGIN
+							
+				IF (NEW.semester_status = 'future') THEN -- only allow inserts with future status
+					IF EXISTS((SELECT * FROM "Semester" S WHERE (S.semester_status = 'present') AND ((NEW.start_date <= S.end_date) OR (NEW.end_date <= S.end_date)))) THEN
+						RAISE EXCEPTION 'Invalid semester , because it is not placed after the "present" semester!' ;	
+					ELSE RETURN NEW ;
+					END IF ;  					
+				ELSE RAISE EXCEPTION 'Any new semester must have "future" status!' ;		   	
+				END IF ; 		
+						      
+		RETURN NULL;		 			 
+     END  
+     $new_future_semester_3_1$ LANGUAGE 'plpgsql' ; 
+
+CREATE TRIGGER change_semester_status_3_2 -- 3.2 
+BEFORE UPDATE ON "Semester"
+FOR EACH ROW EXECUTE PROCEDURE process_change_semester_status_3_2();
+
+CREATE OR REPLACE FUNCTION process_change_semester_status_3_2() --3.2
+RETURNS TRIGGER AS $change_semester_status_3_2$
+    BEGIN		
+				IF ((NEW.semester_status = 'present' AND OLD.semester_status = 'future' ) OR (NEW.semester_status = 'past' AND OLD.semester_status = 'present' ))  THEN -- future -> present  -- Να επιτρεπεται μονο future -> present ή present-> past (γινεται και αυτόματα)
+					IF (NEW.semester_status = 'present' AND OLD.semester_status = 'future' ) THEN -- future -> present
+						IF EXISTS((SELECT * FROM "Semester" S WHERE (S.semester_status = 'future') AND (((NEW.start_date - S.end_date) >= 0) OR ((NEW.end_date - S.end_date) >= 0)) AND (NEW.semester_id <> S.semester_id))) THEN
+							RAISE EXCEPTION 'Invalid change, because there are "future" semesters before the "present" semester!'  ; 
+						ELSIF EXISTS((SELECT * FROM "Semester" S WHERE (S.semester_status = 'past') AND (((NEW.start_date - S.end_date) <= 0) OR ((NEW.end_date - S.end_date) <= 0 )) AND (NEW.semester_id <> S.semester_id))) THEN	
+							RAISE EXCEPTION 'Invalid change, because there are "past" semesters after the "present" semester!'  ; 
+						ELSE	
+							UPDATE "Semester" -- change previous present to past 
+							SET semester_status = 'past'
+							WHERE semester_status = 'present' AND semester_id <> NEW.semester_id ;
+							RETURN NEW ; 	-- allow the change
+						END IF ;
+					ELSIF (NEW.semester_status = 'past' AND OLD.semester_status = 'present' ) THEN -- present -> past	
+						IF EXISTS((SELECT * FROM "Semester" S WHERE (S.semester_status = 'future') AND (((NEW.start_date - S.end_date) >= 0) OR ((NEW.end_date - S.end_date) >= 0)) AND (NEW.semester_id <> S.semester_id) )) THEN
+							RAISE EXCEPTION 'Invalid change, because there are "future" semesters before the "past" semester!'  ; 
+						ELSIF EXISTS((SELECT * FROM "Semester" S WHERE (S.semester_status = 'present') AND (((NEW.start_date - S.end_date) >= 0) OR ((NEW.end_date - S.end_date) >= 0)) AND (NEW.semester_id <> S.semester_id))) THEN	
+							RAISE EXCEPTION 'Invalid change, because the "present" semester is before the "past" semester!'  ; 
+						ELSE RETURN NEW  ; 	
+						END IF ;
+					END IF ; 	
+				ELSE RAISE EXCEPTION 'You can only make the following changes to the status : future -> present and present -> past!'  ; 
+				END IF ; 
+					      
+		RETURN NULL;		 			 
+     END  
+     $change_semester_status_3_2$ LANGUAGE 'plpgsql' ;       
+
+
+
